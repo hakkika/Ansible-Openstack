@@ -1,0 +1,85 @@
+---
+- hosts: openstack
+
+  become: yes
+  remote_user: root
+
+  tasks:
+  - name: Disable SELinux
+    selinux:
+      policy: targeted
+      state: disabled
+
+  - name: Stop and disable firewalld and postfix
+    systemd:
+      name: "{{ item }}"
+      state: stopped
+      enabled: no
+    loop:
+      - firewalld
+      - postfix
+
+  - name: Stop NetworkManager
+    systemd:
+      name: NetworkManager
+      state: stopped
+      enabled: no
+      masked: true
+
+  - name: Uninstall NetworkManager
+    yum:
+      name: "{{ item }}"
+      state: absent
+    loop:
+      - NetworkManager
+      - NetworkManager-libnm
+
+  - name: Edit /etc/default/grub
+    replace:
+      path: /etc/default/grub
+      regexp: ' rhgb quiet'
+      backup: yes
+
+  - name: Update CentOS
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Install Openstack Pike and Packstack
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+      - centos-release-openstack-pike
+      - openstack-packstack
+
+  - name: Update CentOS after Packstack installed
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Install some extra packages
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+      - bind-utils
+      - net-tools
+      - chrony
+
+  - name: Enable chronyd
+    systemd:
+      name: chronyd
+      state: started
+      enabled: yes
+
+  - name: Generate grub
+    command: grub2-mkconfig -o /boot/grub2/grub.cfg
+
+  - name: Copy script
+    copy:
+      src: create_cinder-volumes.sh
+      dest: /root
+      owner: root
+      group: root
+      mode: 755
